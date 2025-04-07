@@ -9,33 +9,22 @@
 #include <filesystem>
 using namespace std;
 const int char_buffered = 2147483647;
-//const int windowSize = 16000;
-const int lookaheadBufferSize = 128;
+const int window_size = 16000;
+const int Buffer_size = 128;
 //1048576
 
 class Token {
 public:
-    uint16_t offset;  // расстояние до начала найденного совпадения в окне
-    uint8_t length;   // длина совпадения
-    char next;        // следующий символ после совпадения
-    bool isLast;      // если true, то токен завершающий и поле next не используется
+    int size;
+    int length;
+    char next;
+    bool flag_next;
 };
 
-class LZ78Encoded {
+class LZ78_codes {
 public:
     int index;
-    short int nextChar;
-};
-
-class VectorHasher {
-public:
-    size_t operator()(const std::vector<unsigned char>& v) const {
-        size_t seed = v.size();
-        for (auto& i : v) {
-            seed ^= i + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-        }
-        return seed;
-    }
+    short int next_сhar;
 };
 
 class element_tree {
@@ -578,33 +567,40 @@ void MTF_decode(vector<short int> str, vector<short int>& old_str) {
 
 void lz78_compress(const string& input, const string& output) {
     ifstream input_file(input, ios::binary);
-    vector<unsigned char> data((std::istreambuf_iterator<char>(input_file)), istreambuf_iterator<char>());
+    vector<unsigned char> readed_data((istreambuf_iterator<char>(input_file)), istreambuf_iterator<char>());
     input_file.close();
-    vector<LZ78Encoded> encodedData;
-    unordered_map<std::vector<unsigned char>, int, class VectorHasher> dictionary;
-    vector<unsigned char> currentSequence;
-    int nextIndex = 1;
+    vector<LZ78_codes> encoded_readed_data;
+    unordered_map<string, int> dictionary;
+    string buffer;
+    string write_buffer;
+    int next_index = 1;
+    int index;
 
-    for (unsigned char c : data) {
-        currentSequence.push_back(c);
-        if (dictionary.find(currentSequence) == dictionary.end()) {
-            dictionary[currentSequence] = nextIndex++;
-            int index = (currentSequence.size() == 1) ? 0 : dictionary[vector<unsigned char>(currentSequence.begin(), currentSequence.end() - 1)];
-            encodedData.push_back({ index, c });
-            currentSequence.clear();
+    for (unsigned char symbol : readed_data) {
+        buffer.push_back(symbol);
+        if (dictionary.find(buffer) == dictionary.end()) {
+            dictionary[buffer] = next_index;
+            next_index++;
+            write_buffer = buffer;
+            write_buffer.pop_back();
+            index = (buffer.size() == 1) ? 0 : dictionary[write_buffer];
+            encoded_readed_data.push_back({ index, symbol });
+            buffer.clear();
         }
     }
 
-    if (!currentSequence.empty()) {
-        int index = dictionary[vector<unsigned char>(currentSequence.begin(), currentSequence.end() - 1)];
-        encodedData.push_back({ index, currentSequence.back() });
+    if (!buffer.empty()) {
+        write_buffer = buffer;
+        write_buffer.pop_back();
+        index = dictionary[write_buffer];
+        encoded_readed_data.push_back({ index, buffer.back() });
     }
 
     ofstream output_file(output, ios::binary);
 
-    for (const auto& encoded : encodedData) {
+    for (const auto& encoded : encoded_readed_data) {
         output_file.write(reinterpret_cast<const char*>(&encoded.index), sizeof(encoded.index));
-        output_file.write(reinterpret_cast<const char*>(&encoded.nextChar), sizeof(encoded.nextChar));
+        output_file.write(reinterpret_cast<const char*>(&encoded.next_сhar), sizeof(encoded.next_сhar));
     }
 
     output_file.close();
@@ -612,124 +608,129 @@ void lz78_compress(const string& input, const string& output) {
 
 void lz78_decompress(const string& input, const string& output) {
     ifstream input_file(input, ios::binary);
-    std::vector<LZ78Encoded> encodedData;
-    LZ78Encoded encoded;
+    vector<LZ78_codes> encoded_data;
+    LZ78_codes encoded;
 
-    while (input_file.read(reinterpret_cast<char*>(&encoded.index), sizeof(encoded.index)) and input_file.read(reinterpret_cast<char*>(&encoded.nextChar), sizeof(encoded.nextChar))) {
-        encodedData.push_back(encoded);
+    while (input_file.read(reinterpret_cast<char*>(&encoded.index), sizeof(encoded.index)) and input_file.read(reinterpret_cast<char*>(&encoded.next_сhar), sizeof(encoded.next_сhar))) {
+        encoded_data.push_back(encoded);
     }
     input_file.close();
 
-    vector<unsigned char> decodedData;
-    std::unordered_map<int, std::vector<unsigned char>> dictionary;
-    dictionary[0] = {};
-    int nextIndex = 1;
+    vector<unsigned char> decoded_data;
+    unordered_map<int, string> dictionary;
+    int next_index = 1;
 
-    for (const auto& encoded : encodedData) {
+    for (const auto& encoded : encoded_data) {
         int index = encoded.index;
-        unsigned char nextChar = encoded.nextChar;
+        unsigned char next_сhar = encoded.next_сhar;
 
-        std::vector<unsigned char> entry = dictionary[index];
-        entry.push_back(nextChar);
-        dictionary[nextIndex++] = entry;
+        string entry = dictionary[index];
+        entry.push_back(next_сhar);
+        dictionary[next_index++] = entry;
 
-        decodedData.insert(decodedData.end(), entry.begin(), entry.end());
+        decoded_data.insert(decoded_data.end(), entry.begin(), entry.end());
     }
 
     ofstream output_file(output, ios::binary);
-    output_file.write(reinterpret_cast<const char*>(decodedData.data()), decodedData.size());
+    output_file.write(reinterpret_cast<const char*>(decoded_data.data()), decoded_data.size());
     output_file.close();
 }
 
-void lz77_compress(const string& input_l, const string& output, int& windowSize) {
-    ifstream input_file(input_l, ios::binary);
-    vector <char> input((istreambuf_iterator<char>(input_file)), istreambuf_iterator<char>());
-
+void lz77_compress(const string& input_file, const string& output) {
+    vector <char> matrix;
+    char byte;
+    ifstream file(input_file, ios::binary);
+    while (file.get(byte)) {
+        matrix.push_back(byte);
+    }
+    file.close();
     vector<Token> tokens;
-    size_t i = 0;
-    while (i < input.size()) {
-        int bestLength = 0;
-        int bestOffset = 0;
-        int start = (i >= windowSize) ? i - windowSize : 0;
-        for (int j = start; j < i; j++) {
+    long long i = 0;
+    int len_matrix = matrix.size();
+    while (i < len_matrix) {
+        int bestlen = 0;
+        int size = 0;
+        int index = 0;
+        if (i >= window_size) {
+            index -= window_size;
+        }
+        for (int j = index; j < i; j++) {
             int length = 0;
-            while (length < lookaheadBufferSize and i + length < input.size() and input[j + length] == input[i + length]) {
+            while (length < Buffer_size and i + length < matrix.size() and matrix[j + length] == matrix[i + length]) {
                 length++;
             }
-            if (length > bestLength) {
-                bestLength = length;
-                bestOffset = i - j;
+            if (length > bestlen) {
+                bestlen = length;
+                size = i - j;
             }
         }
         Token token;
-        if (i + bestLength < input.size()) {
-            token.offset = (bestLength > 0) ? bestOffset : 0;
-            token.length = bestLength;
-            token.next = input[i + bestLength];
-            token.isLast = false;
+        if (i + bestlen < matrix.size()) {
+
+            token.size = (bestlen > 0) ? size : 0;
+            token.length = bestlen;
+            token.next = matrix[i + bestlen];
+            token.flag_next = false;
             tokens.push_back(token);
-            i += bestLength + 1;
+            i += bestlen + 1;
         }
         else {
-            token.offset = (bestLength > 0) ? bestOffset : 0;
-            token.length = bestLength;
+            token.size = (bestlen > 0) ? size : 0;
+            token.length = bestlen;
             token.next = 0;
-            token.isLast = true;
+            token.flag_next = true;
             tokens.push_back(token);
-            i += bestLength;
+            i += bestlen;
         }
     }
 
+
     ofstream output_file(output, ios::binary);
-    uint32_t tokenCount = tokens.size();
+    unsigned int tokenCount = tokens.size();
 
     output_file.write(reinterpret_cast<const char*>(&tokenCount), sizeof(tokenCount));
     for (const auto& token : tokens) {
-        output_file.write(reinterpret_cast<const char*>(&token.offset), sizeof(token.offset));
+        output_file.write(reinterpret_cast<const char*>(&token.size), sizeof(token.size));
         output_file.write(reinterpret_cast<const char*>(&token.length), sizeof(token.length));
         output_file.write(&token.next, sizeof(token.next));
-        output_file.write(reinterpret_cast<const char*>(&token.isLast), sizeof(token.isLast));
+        output_file.write(reinterpret_cast<const char*>(&token.flag_next), sizeof(token.flag_next));
     }
+
     output_file.close();
-    ifstream new_file(output, ios::binary);
-    new_file.seekg(0, ios::end);
-    cout << (static_cast<double>(input.size()) - static_cast<double>(new_file.tellg())) / static_cast<double>(input.size()) << " " << windowSize << endl;
-    input_file.close();
-    new_file.close();
 }
 
 void lz77_decompress(const string& input, const string& output) {
     ifstream input_file(input, ios::binary);
-    uint32_t tokenCount;
+    int tokenCount;
     input_file.read(reinterpret_cast<char*>(&tokenCount), sizeof(tokenCount));
     vector<Token> tokens(tokenCount);
 
-    for (uint32_t i = 0; i < tokenCount; i++) {
+    for (int i = 0; i < tokenCount; i++) {
         Token token;
-        input_file.read(reinterpret_cast<char*>(&token.offset), sizeof(token.offset));
+        input_file.read(reinterpret_cast<char*>(&token.size), sizeof(token.size));
         input_file.read(reinterpret_cast<char*>(&token.length), sizeof(token.length));
         input_file.read(&token.next, sizeof(token.next));
-        input_file.read(reinterpret_cast<char*>(&token.isLast), sizeof(token.isLast));
+        input_file.read(reinterpret_cast<char*>(&token.flag_next), sizeof(token.flag_next));
         tokens[i] = token;
     }
     input_file.close();
 
-    vector <char> decoded_mass;
+    vector <char> matrix;
     for (const auto& token : tokens) {
         if (token.length > 0) {
-            int pos = decoded_mass.size() - token.offset;
+            int pos = matrix.size() - token.size;
             for (int i = 0; i < token.length; i++) {
-                decoded_mass.push_back(decoded_mass[pos + i]);
+                matrix.push_back(matrix[pos + i]);
             }
         }
-        if (!token.isLast) {
-            decoded_mass.push_back(token.next);
+        if (not token.flag_next) {
+            matrix.push_back(token.next);
         }
     }
 
     ofstream output_file(output, ios::binary);
 
-    output_file.write(decoded_mass.data(), decoded_mass.size());
+    output_file.write(matrix.data(), matrix.size());
     output_file.close();
 }
 
@@ -747,6 +748,9 @@ ru_text_compress.txt
 BW.raw
 BWG.raw
 RGB.raw
+
+test.txt
+untest.txt
 */
 int main()
 {
@@ -759,4 +763,8 @@ int main()
     /*for (int windowSize = 128; windowSize <= 32768; windowSize *= 2) {
         lz77_compress("TEST_FILES\\enwik7.txt", "TEST_GRAPHICS\\enwik_compress.txt", windowSize);
     }*/
+    //lz78_compress("TEST_FILES\\enwik7.txt", "test.txt");
+    //lz78_compress("test.txt", "untest.txt");
+    //lz78_decompress("test.txt", "untest.txt");
+    //lz78_decompress("LZ78\\enwik_compress.txt", "untest.txt");
 }
