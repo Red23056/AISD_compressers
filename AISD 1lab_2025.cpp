@@ -227,57 +227,57 @@ void rle_decompress(vector<short int> str, vector<short int>& old_str) {
     }
 }
 
-void BWT_code(vector<short int> str, vector<short int>& bwt_str, short int& position_bwt) {
-    vector<vector<short int>> bwt_mass;
-    bwt_mass.push_back(str);
-    for (int i = 1; i < str.size(); i++) {
+void BWT_code(vector<short int> input_str, vector<short int>& coded_str) {
+    vector<vector<short int>> bwt_coded;
+    short int str_number;
+    bwt_coded.push_back(input_str);
+    for (int i = 1; i < input_str.size(); i++) {
         vector<short int> new_str;
-        for (int j = 1; j < bwt_mass[i - 1].size(); j++) {
-            new_str.push_back(bwt_mass[i - 1][j]);
+        for (int j = 1; j < bwt_coded[i - 1].size(); j++) {
+            new_str.push_back(bwt_coded[i - 1][j]);
         }
-        new_str.push_back(bwt_mass[i - 1][0]);
-        bwt_mass.push_back(new_str);
+        new_str.push_back(bwt_coded[i - 1][0]);
+        bwt_coded.push_back(new_str);
     }
-    shell_sort(bwt_mass);
-    for (int i = 0; i < bwt_mass.size(); i++) {
-        if (bwt_mass[i] == str) {
-            position_bwt = i;
+    shell_sort(bwt_coded);
+    for (int i = 0; i < bwt_coded.size(); i++) {
+        if (bwt_coded[i] == input_str) {
+            str_number = i;
         }
-        bwt_str.push_back(bwt_mass[i][bwt_mass[i].size() - 1]);
+        coded_str.push_back(bwt_coded[i][bwt_coded[i].size() - 1]);
     }
+    coded_str.push_back(str_number);
 }
 
-void buffer_for_BWT_code(vector<short int> str, vector<short int>& bwt_str, vector<short int>& position_bwt) {
+void buffer_for_BWT_code(vector<short int> input_str, vector<short int>& coded_str) {
+    int len_input_str = input_str.size();
+    int len_buffer_str;
     int len_buffer = 1200;
-    int n = str.size();
-    int len;
     long long index = 0;
     vector<short int> buffer;
     vector<short int> bwt_buffer;
-    short int position_bwt_ = 0;
-    while (index < n) {
-        buffer.push_back(str[index]);
+    while (index < len_input_str) {
+        buffer.push_back(input_str[index]);
         if (buffer.size() % len_buffer == 0) {
-            BWT_code(buffer, bwt_buffer, position_bwt_);
-            len = bwt_buffer.size();
-            for (int i = 0; i < len; i++) {
-                bwt_str.push_back(bwt_buffer[i]);
+            BWT_code(buffer, bwt_buffer);
+            len_buffer_str = bwt_buffer.size();
+
+            for (int i = 0; i < bwt_buffer.size(); i++) {
+                coded_str.push_back(bwt_buffer[i]);
             }
-            position_bwt.push_back(position_bwt_);
-            position_bwt_ = 0;
+            //str_number = 0;
             buffer.clear();
             bwt_buffer.clear();
         }
         index++;
     }
     if (buffer.size() > 0) {
-        BWT_code(buffer, bwt_buffer, position_bwt_);
-        len = bwt_buffer.size();
-        for (int i = 0; i < len; i++) {
-            bwt_str.push_back(bwt_buffer[i]);
+        BWT_code(buffer, bwt_buffer);
+        len_buffer_str = bwt_buffer.size();
+        for (int i = 0; i < len_buffer_str; i++) {
+            coded_str.push_back(bwt_buffer[i]);
         }
-        position_bwt.push_back(position_bwt_);
-        position_bwt_ = 0;
+        //str_number = 0;
         buffer.clear();
         bwt_buffer.clear();
     }
@@ -307,49 +307,55 @@ void count_sort(vector<short int>& P_inverse, vector<short int> str) {
     }
 }
 
-void BWT_decode(vector<short int> bwt_str, vector<short int>& str, int position_bwt) {
-    int len = bwt_str.size();
+void BWT_decode(vector<short int> input_str, vector<short int>& decoded_str, short int& position_bwt) {
+    int len = input_str.size();
     vector<short int>P_inverse;
-    count_sort(P_inverse, bwt_str);
+    count_sort(P_inverse, input_str);
+    //cout << "s";
 
-    int j = position_bwt;
+    int j = position_bwt + 128;
+    cout << j << endl;
     for (int i = 0; i < len; i++) {
         j = P_inverse[j];
-        str.push_back(bwt_str[j]);
+        decoded_str.push_back(input_str[j]);
     }
 }
 
-void buffer_for_BWT_decode(vector<short int> bwt_str, vector<short int>& str, vector<short int>& position_bwt) {
-    int len_buffer = 1200;
-    int n = bwt_str.size();
-    int len;
+void buffer_for_BWT_decode(vector<short int> input_str, vector<short int>& decoded_mass) {
+    int len_input_str = input_str.size();
+    int len_buffer_str;
+    int len_buffer = 1201;
+    short int position_in_matrix;
     long long index = 0;
-    long long bufers_index = 0;
     vector<short int> buffer;
     vector<short int> bwt_buffer;
-    while (index < n) {
-        buffer.push_back(bwt_str[index]);
+    while (index < len_input_str) {
+        buffer.push_back(input_str[index]);
         if (buffer.size() == len_buffer) {
-            BWT_decode(buffer, bwt_buffer, position_bwt[bufers_index]);
-            len = bwt_buffer.size();
-            for (int i = 0; i < len; i++) {
-                str.push_back(bwt_buffer[i]);
+            position_in_matrix = buffer[buffer.size() - 1];
+            buffer.pop_back();
+            BWT_decode(buffer, bwt_buffer, position_in_matrix);
+            len_buffer_str = bwt_buffer.size();
+
+            for (int i = 0; i < len_buffer_str; i++) {
+                decoded_mass.push_back(bwt_buffer[i]);
             }
             buffer.clear();
             bwt_buffer.clear();
-            bufers_index++;
         }
         index++;
     }
     if (buffer.size() > 0) {
-        BWT_decode(buffer, bwt_buffer, position_bwt[bufers_index]);
-        len = bwt_buffer.size();
-        for (int i = 0; i < len; i++) {
-            str.push_back(bwt_buffer[i]);
+        position_in_matrix = buffer[buffer.size() - 1];
+        buffer.pop_back();
+        BWT_decode(buffer, bwt_buffer, position_in_matrix);
+        len_buffer_str = bwt_buffer.size();
+
+        for (int i = 0; i < len_buffer_str; i++) {
+            decoded_mass.push_back(bwt_buffer[i]);
         }
         buffer.clear();
         bwt_buffer.clear();
-        bufers_index++;
     }
 }
 
@@ -757,9 +763,14 @@ int main()
     vector <short int> str;
     vector <short int> str_1;
     vector <short int> empty;
-    float szhat;
-    string str_f;
-    szhat;
+    /*read_file_by_bytes("TEST_FILES\\martyr.txt", str);
+    buffer_for_BWT_code(str, str_1);
+    write_by_bytes("test.txt", str_1);
+    str.clear();
+    str_1.clear();*/
+    read_file_by_bytes("test.txt", str);
+    buffer_for_BWT_decode(str, str_1);
+    write_by_bytes("untest.txt", str_1);
     /*for (int windowSize = 128; windowSize <= 32768; windowSize *= 2) {
         lz77_compress("TEST_FILES\\enwik7.txt", "TEST_GRAPHICS\\enwik_compress.txt", windowSize);
     }*/
